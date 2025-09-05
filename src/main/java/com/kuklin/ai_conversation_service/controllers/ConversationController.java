@@ -1,0 +1,24 @@
+package com.kuklin.ai_conversation_service.controllers;
+
+import com.kuklin.ai_conversation_service.models.ConversationDto;
+import com.kuklin.ai_conversation_service.services.ConversationService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+
+@RestController
+@RequestMapping("/api/v1/conversations")
+@RequiredArgsConstructor
+public class ConversationController {
+    private final ConversationService conversationService;
+
+    @PostMapping
+    public ConversationDto postNewConversationDto(@RequestBody ConversationDto conversationDto) {
+        return conversationService.getNewConversationDto(conversationDto);
+    }
+
+    @GetMapping("/{id}")
+    public ConversationDto getConversationDtoByIdOrGetNull(@PathVariable Long id) {
+        return conversationService.getConversationDtoByIdOrGetNull(id);
+    }
+}

@@ -1,0 +1,38 @@
+server:
+  port: 8082
+
+spring:
+  cloud:
+    openfeign:
+      okhttp:
+        enabled: true
+  application:
+    name: ai-conversation-service
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    password: password
+    username: postgres
+    url: jdbc:postgresql://localhost:5435/conversations
+  jpa:
+    database: postgresql
+    properties:
+      hibernate:
+        format_sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+feign:
+  client:
+    config:
+      default:
+        connectTimeout: 5000
+        readTimeout: 1000000
+        loggerLevel: basic
+
+integrations:
+  connect-timeout: 5000
+  read-timeout: 1000000
+  write-timeout: 5000
+  openai-api:
+    url: https://api.openai.com/v1/
+  user-service:
+    url: http://localhost:8081/
