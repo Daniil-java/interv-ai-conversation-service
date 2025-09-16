@@ -65,14 +65,15 @@ public class ChatMessageService {
         //Получение беседы и отправка ошибки, в случае не существования беседы
         Conversation conversation = getConversationOrThrow(messageRequestDto);
 
-        //Получение контекста беседы
-        List<ChatMessage> chatMessageList =
-                chatMessageRepository.findAllByConversation_Id(messageRequestDto.getConversationId());
-
         //Получение сущности модели из БД
         Model model = modelService.findModelOrThrowError(messageRequestDto.getModel());
 
         ChatMessage userMessage = ChatMessage.newUserMessage(messageRequestDto, conversation, model);
+
+        //Получение контекста беседы и добавление последнго сообщения
+        List<ChatMessage> chatMessageList =
+                chatMessageRepository.findAllByConversation_Id(messageRequestDto.getConversationId());
+        chatMessageList.add(userMessage);
 
         //Запрос в ИИ
         AiResponse response = fetchResponseOrThrow(chatMessageList, model, userMessage.getTemperature());

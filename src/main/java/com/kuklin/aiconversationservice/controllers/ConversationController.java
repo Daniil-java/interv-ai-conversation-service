@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 
 @RestController
-@RequestMapping
+@RequestMapping("/conversations")
 @RequiredArgsConstructor
 public class ConversationController {
     private final ConversationService conversationService;
