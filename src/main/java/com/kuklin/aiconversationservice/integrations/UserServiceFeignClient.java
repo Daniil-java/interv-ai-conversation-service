@@ -1,8 +1,8 @@
 package com.kuklin.aiconversationservice.integrations;
 
 import com.kuklin.aiconversationservice.configurations.FeignClientConfig;
-import com.kuklin.aiconversationservice.sharedlibrary.BalanceSubtractRequest;
-import com.kuklin.aiconversationservice.sharedlibrary.UserDto;
+import com.kuklin.sharedlibrary.BalanceSubtractRequest;
+import com.kuklin.sharedlibrary.UserDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;

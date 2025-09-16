@@ -14,6 +14,9 @@ public class ConversationService {
 
     private final ConversationRepository conversationRepository;
 
+    private static final int NAME_MIN_LENGTH = 1;
+    private static final int NAME_MAX_LENGTH = 50;
+    private static final String ELLIPSIS = "...";
     public ConversationDto getNewConversationDto(ConversationDto conversationDto) {
         return Conversation.entityToDto(
                 getNewConversation(conversationDto.getUserId(), conversationDto.getName())
@@ -35,12 +38,26 @@ public class ConversationService {
     }
 
     public ConversationDto getConversationDtoByIdOrGetNull(Long id) {
-        return Conversation.entityToDto(
-                conversationRepository.findById(id).orElse(null)
-        );
+        return conversationRepository.findById(id)
+                .map(Conversation::entityToDto)
+                .orElse(null)
+                ;
     }
 
     public Conversation setNameForConversation(Conversation conversation, String content) {
-        return conversationRepository.save(conversation.setName(content));
+
+        return conversationRepository.save(conversation.setName(
+                normalizeConversationName(conversation, content)
+        ));
+    }
+
+    private String normalizeConversationName(Conversation conversation, String name) {
+        if (name == null || name.trim().length() < NAME_MIN_LENGTH) {
+            name = String.valueOf(conversation.getId());
+        }
+        if (name.length() > NAME_MAX_LENGTH) {
+            name = name.substring(0, NAME_MAX_LENGTH).concat(ELLIPSIS);
+        }
+        return name;
     }
 }

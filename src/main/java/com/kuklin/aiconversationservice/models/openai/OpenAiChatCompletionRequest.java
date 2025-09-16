@@ -2,7 +2,7 @@ package com.kuklin.aiconversationservice.models.openai;
 
 import com.kuklin.aiconversationservice.entities.ChatMessage;
 import com.kuklin.aiconversationservice.entities.Model;
-import com.kuklin.aiconversationservice.models.enums.ChatModel;
+import com.kuklin.sharedlibrary.ChatModel;
 import lombok.Data;
 import lombok.experimental.Accessors;
 

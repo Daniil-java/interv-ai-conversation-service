@@ -1,10 +1,11 @@
 package com.kuklin.aiconversationservice.services;
 
 import com.kuklin.aiconversationservice.entities.Model;
-import com.kuklin.aiconversationservice.models.enums.ChatModel;
 import com.kuklin.aiconversationservice.repositories.ModelRepository;
-import com.kuklin.aiconversationservice.sharedlibrary.exceptions.ErrorResponseException;
-import com.kuklin.aiconversationservice.sharedlibrary.exceptions.ErrorStatus;
+import com.kuklin.sharedlibrary.ChatModel;
+import com.kuklin.sharedlibrary.exceptions.ErrorResponseException;
+import com.kuklin.sharedlibrary.exceptions.ErrorStatus;
+import com.kuklin.sharedlibrary.exceptions.ServiceOrigin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,9 @@ public class ModelService {
 
     public Model findModelOrThrowError(ChatModel chatModel) {
         return modelRepository.findByModelName(chatModel.getModel())
-                .orElseThrow(() -> new ErrorResponseException(ErrorStatus.PROVIDER_NOT_FOUND));
+                .orElseThrow(() -> new ErrorResponseException(
+                        ErrorStatus.PROVIDER_NOT_FOUND,
+                        ServiceOrigin.AI_CONVERSATION_SERVICE)
+                );
     }
 }

@@ -1,10 +1,11 @@
 package com.kuklin.aiconversationservice.entities;
 
 import com.kuklin.aiconversationservice.models.AiResponse;
-import com.kuklin.aiconversationservice.models.MessageRequestDto;
 import com.kuklin.aiconversationservice.models.enums.ChatRole;
 import com.kuklin.aiconversationservice.models.enums.MessageStatus;
 import com.kuklin.aiconversationservice.models.enums.MessageType;
+import com.kuklin.aiconversationservice.models.openai.OpenAiChatCompletionRequest;
+import com.kuklin.sharedlibrary.MessageRequestDto;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -74,7 +75,7 @@ public class ChatMessage {
                 .setConversation(userMessage.getConversation())
                 .setNativeTokensSum(nativeTokensSum)
                 .setGeneralTokensSum(generalTokensSum)
-                .setTemperature(0f)
+                .setTemperature(OpenAiChatCompletionRequest.TEMPERATURE_DEFAULT)
                 .setModel(userMessage.getModel())
                 .setServiceMessage(false)
                 ;

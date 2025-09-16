@@ -1,6 +1,7 @@
 package com.kuklin.aiconversationservice.services;
 
 import com.kuklin.aiconversationservice.entities.ChatMessage;
+import com.kuklin.aiconversationservice.entities.Model;
 import com.kuklin.aiconversationservice.integrations.OpenAiFeignClient;
 import com.kuklin.aiconversationservice.models.AiResponse;
 import com.kuklin.aiconversationservice.models.SpeechRequest;
@@ -29,19 +30,22 @@ public class OpenAiIntegrationService {
         this.openAiFeignClient = openAiFeignClient;
     }
 
-    public AiResponse fetchResponse(ChatMessage userMessage, List<ChatMessage> chatMessageList) {
-        OpenAiChatCompletionRequest request;
-        if (chatMessageList == null) {
-            request = OpenAiChatCompletionRequest.makeDefaultRequest(userMessage.getContent());
-        } else {
-            request = OpenAiChatCompletionRequest.makeRequest(
-                    chatMessageList, userMessage.getModel(), userMessage.getTemperature());
-        }
+    public AiResponse fetchResponse(ChatMessage userMessage) {
+        OpenAiChatCompletionRequest request = OpenAiChatCompletionRequest.makeDefaultRequest(userMessage.getContent());
+        return fetchResponse(request).toAiResponse(userMessage.getModel());
+    }
 
-        OpenAiChatCompletionResponse response =
-                openAiFeignClient.generate("Bearer " + aiKey, request);
+    public AiResponse fetchResponse(List<ChatMessage> chatMessageList, Model model, Float temp) {
+        OpenAiChatCompletionRequest request =
+                OpenAiChatCompletionRequest.makeRequest(
+                        chatMessageList, model, temp
+                );
 
-        return response.toAiResponse(userMessage.getModel());
+        return fetchResponse(request).toAiResponse(model);
+    }
+
+    private OpenAiChatCompletionResponse fetchResponse(OpenAiChatCompletionRequest request) {
+        return openAiFeignClient.generate("Bearer " + aiKey, request);
     }
 
     public String fetchAudioResponse(byte[] content) {

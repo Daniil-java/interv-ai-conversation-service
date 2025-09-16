@@ -5,17 +5,24 @@ import com.kuklin.aiconversationservice.entities.Conversation;
 import com.kuklin.aiconversationservice.entities.Model;
 import com.kuklin.aiconversationservice.integrations.UserServiceFeignClient;
 import com.kuklin.aiconversationservice.models.AiResponse;
-import com.kuklin.aiconversationservice.models.MessageRequestDto;
-import com.kuklin.aiconversationservice.models.MessageResponseDto;
+import com.kuklin.aiconversationservice.models.SpeechRequest;
+import com.kuklin.aiconversationservice.models.TranscriptionResponse;
 import com.kuklin.aiconversationservice.models.enums.MessageStatus;
 import com.kuklin.aiconversationservice.repositories.ChatMessageRepository;
-import com.kuklin.aiconversationservice.sharedlibrary.BalanceSubtractRequest;
-import com.kuklin.aiconversationservice.sharedlibrary.UserDto;
-import com.kuklin.aiconversationservice.sharedlibrary.exceptions.ErrorResponseException;
-import com.kuklin.aiconversationservice.sharedlibrary.exceptions.ErrorStatus;
+import com.kuklin.sharedlibrary.BalanceSubtractRequest;
+import com.kuklin.sharedlibrary.MessageRequestDto;
+import com.kuklin.sharedlibrary.MessageResponseDto;
+import com.kuklin.sharedlibrary.UserDto;
+import com.kuklin.sharedlibrary.exceptions.ErrorResponseException;
+import com.kuklin.sharedlibrary.exceptions.ErrorStatus;
+import com.kuklin.sharedlibrary.exceptions.ServiceOrigin;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -43,82 +50,86 @@ public class ChatMessageService {
         chatMessageRepository.save(userMessage);
 
         try {
-            return openAiIntegrationService.fetchResponse(userMessage, null).getContent();
+            return openAiIntegrationService.fetchResponse(userMessage).getContent();
         } catch (Exception e) {
             log.error("AI Connection error!");
-            throw new ErrorResponseException(ErrorStatus.AI_CONNECTION_ERROR);
+            throw new ErrorResponseException(ErrorStatus.AI_CONNECTION_ERROR, ServiceOrigin.AI_CONVERSATION_SERVICE);
         }
     }
 
+    @Transactional
     public MessageResponseDto processUserMessageOrGetNull(MessageRequestDto messageRequestDto) throws ErrorResponseException {
-        //Конвертация дто в сущность
-        ChatMessage userMessage = makeUserMessage(messageRequestDto);
+        //Проверка, что баланс больше нуля
+        validateBalanceOrThrow(messageRequestDto.getUserId());
 
-        if (userMessage == null) throw new NullPointerException();
+        //Получение беседы и отправка ошибки, в случае не существования беседы
+        Conversation conversation = getConversationOrThrow(messageRequestDto);
 
         //Получение контекста беседы
         List<ChatMessage> chatMessageList =
                 chatMessageRepository.findAllByConversation_Id(messageRequestDto.getConversationId());
 
-        UserDto userDto = userServiceFeignClient.getUserById(messageRequestDto.getUserId());
-        if (userDto.getBalance().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new ErrorResponseException(ErrorStatus.USER_INSUFFICIENT_FUNDS);
-        }
-
-        try {
-            //Получение провайдера по параметру приходящего запроса и исполнение запроса
-            AiResponse response = openAiIntegrationService.fetchResponse(
-                    userMessage, chatMessageList);
-
-            //Конвертация ответа в сущность
-            ChatMessage assistantMessage = ChatMessage.newAssistantMessage(
-                    response,
-                    userMessage
-            );
-
-            userMessage.setStatus(MessageStatus.DONE);
-            //Вычитание токенов с баланса пользователя, если сообщение не является служебным
-            BalanceSubtractRequest request = new BalanceSubtractRequest()
-                    .setAmount(assistantMessage.getInputToken().add(assistantMessage.getOutputToken()));
-
-            userServiceFeignClient.subtractBalance(userDto.getId(), request);
-
-            chatMessageRepository.save(userMessage);
-
-            assistantMessage.setStatus(MessageStatus.DONE);
-            ChatMessage chatMessage = chatMessageRepository.save(assistantMessage);
-
-            return new MessageResponseDto()
-                    .setContent(chatMessage.getContent())
-                    .setOutputToken(chatMessage.getOutputToken())
-                    .setInputToken(chatMessage.getInputToken());
-        } catch (Exception e) {
-            log.error("AI connection error: ", e.getMessage());
-            setStatusAndErrorDetails(userMessage, MessageStatus.ERROR, e.getMessage());
-            throw new ErrorResponseException(ErrorStatus.AI_CONNECTION_ERROR);
-        }
-    }
-
-    private ChatMessage makeUserMessage(MessageRequestDto messageRequestDto) {
-        Conversation conversation = conversationService
-                .getByIdOrGetNull(messageRequestDto.getConversationId());
-
+        //Получение сущности модели из БД
         Model model = modelService.findModelOrThrowError(messageRequestDto.getModel());
-
-        if (conversation == null) return null;
-
-        if (conversation.getName() == null) {
-            conversation = conversationService.setNameForConversation(conversation, messageRequestDto.getContent());
-        }
 
         ChatMessage userMessage = ChatMessage.newUserMessage(messageRequestDto, conversation, model);
 
-        return chatMessageRepository.save(userMessage).setConversation(conversation);
+        //Запрос в ИИ
+        AiResponse response = fetchResponseOrThrow(chatMessageList, model, userMessage.getTemperature());
+
+        //Конвертация ответа в сущность
+        ChatMessage assistantMessage = ChatMessage
+                .newAssistantMessage(response, userMessage);
+
+        //Вычитание токенов с баланса пользователя, если сообщение не является служебным
+        subtractBalance(assistantMessage, messageRequestDto.getUserId());
+
+        chatMessageRepository.save(userMessage.setStatus(MessageStatus.DONE));
+        ChatMessage chatMessage = chatMessageRepository.save(assistantMessage.setStatus(MessageStatus.DONE));
+
+        return new MessageResponseDto()
+                .setContent(chatMessage.getContent())
+                .setOutputToken(chatMessage.getOutputToken())
+                .setInputToken(chatMessage.getInputToken());
+
     }
 
-    private void setStatusAndErrorDetails(ChatMessage userMessage, MessageStatus messageStatus, String errorStatus) {
-        userMessage.setStatus(messageStatus);
-        userMessage.setErrorDetails(errorStatus);
-        chatMessageRepository.save(userMessage);
+    private void subtractBalance(ChatMessage assistantMessage, Long userId) {
+        BalanceSubtractRequest request = new BalanceSubtractRequest()
+                .setAmount(assistantMessage.getInputToken().add(assistantMessage.getOutputToken()));
+        userServiceFeignClient.subtractBalance(userId, request);
+    }
+
+    private Conversation getConversationOrThrow(MessageRequestDto messageRequestDto) {
+        Conversation conversation = conversationService
+                .getByIdOrGetNull(messageRequestDto.getConversationId());
+        if (conversation == null) throw new ErrorResponseException(
+                ErrorStatus.CONVERSATION_NOT_FOUND, ServiceOrigin.AI_CONVERSATION_SERVICE);
+        //Назначение имени для беседы
+        if (conversation.getName() == null) {
+            conversation = conversationService.setNameForConversation(conversation, messageRequestDto.getContent());
+        }
+        return conversation;
+    }
+
+    //Проверка баланса пользователя
+    private void validateBalanceOrThrow(Long userId) {
+        UserDto userDto = userServiceFeignClient.getUserById(userId);
+        if (userDto.getBalance().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new ErrorResponseException(ErrorStatus.USER_INSUFFICIENT_FUNDS,
+                    ServiceOrigin.AI_CONVERSATION_SERVICE);
+        }
+    }
+
+    private AiResponse fetchResponseOrThrow(List<ChatMessage> chatMessageList, Model model, Float temp) {
+        try {
+            //Получение провайдера по параметру приходящего запроса и исполнение запроса
+            return openAiIntegrationService
+                    .fetchResponse(chatMessageList, model, temp);
+        } catch (Exception e) {
+            log.error("AI connection error: ", e.getMessage());
+            throw new ErrorResponseException(ErrorStatus.AI_CONNECTION_ERROR,
+                    ServiceOrigin.AI_CONVERSATION_SERVICE);
+        }
     }
 }
